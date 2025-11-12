@@ -1,157 +1,163 @@
 #!/usr/bin/env python3
-import time
-import json
-import logging
-import psutil
 import os
-import socket
-import random
-from datetime import datetime
+import time
 import ssl
+import logging
+import socket
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+import psutil
 import paho.mqtt.client as mqtt
 from influxdb_client_3 import InfluxDBClient3, Point
 
+try:
+    import RPi.GPIO as GPIO
+except (RuntimeError, ImportError):
+    print("WARNING: RPi.GPIO not available.")
+    GPIO = None
+
+try:
+    import adafruit_dht
+    import board
+except ImportError:
+    print("WARNING: adafruit-circuitpython-dht not available. DHT11 sensor will be disabled.")
+    adafruit_dht = None
+    board = None
+
 
 DEVICE_NAME = socket.gethostname()
-DHT_PIN = 4
-TRIG_PIN = 23
-ECHO_PIN = 24
 
-
-BROKER = "t0761115.ala.eu-central-1.emqxsl.com"  # check Deployment Overview
-PORT = 8883  # TLS/SSL port from Deployment Overview
-USERNAME = "your_emqx_username"
-PASSWORD = "your_emqx_password"
+MQTT_BROKER = "t0761115.ala.eu-central-1.emqxsl.com"
+MQTT_PORT = 8883
+MQTT_USER = os.environ.get("MQTT_USER")
+MQTT_PASS = os.environ.get("MQTT_PASS")
 CA_CERT = "./server-ca.crt"
 
-TOPIC_METRICS = f"{DEVICE_NAME}/metrics"
-TOPIC_DHT11 = f"{DEVICE_NAME}/dht11"
-TOPIC_ULTRASONIC = f"{DEVICE_NAME}/ultrasonic"
+TOPICS = {
+    "dht11": f"{DEVICE_NAME}/dht11",
+    "metrics": f"{DEVICE_NAME}/metrics"
+}
 
-CLIENT_ID = f"python-mqtt-{random.randint(0,1000)}"
-
-
-INFLUX_HOST = "https://eu-central-1-1.aws.cloud2.influxdata.com"
+INFLUX_TOKEN = os.environ.get("INFLUXDB_TOKEN")
 INFLUX_ORG = "Mobile and Wireless Networks"
+INFLUX_HOST = "https://eu-central-1-1.aws.cloud2.influxdata.com"
 INFLUX_BUCKET_SENSOR = "sensor"
 INFLUX_BUCKET_METRICS = "metrics"
-INFLUX_TOKEN = os.environ.get("INFLUXDB_TOKEN")
-influx_client = InfluxDBClient3(host=INFLUX_HOST, token=INFLUX_TOKEN, org=INFLUX_ORG)
 
 
 SENSOR_INTERVAL = 10
 METRICS_INTERVAL = 60
 
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 
-try:
-    import Adafruit_DHT
-    DHT_AVAILABLE = True
-except ImportError:
-    DHT_AVAILABLE = False
+influx_client = InfluxDBClient3(host=INFLUX_HOST, token=INFLUX_TOKEN, org=INFLUX_ORG)
 
-try:
-    import RPi.GPIO as GPIO
-    GPIO_AVAILABLE = True
-except ImportError:
-    GPIO_AVAILABLE = False
-
-if GPIO_AVAILABLE:
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setwarnings(False)
-    GPIO.setup(TRIG_PIN, GPIO.OUT)
-    GPIO.setup(ECHO_PIN, GPIO.IN)
-
-
-def on_connect(client, userdata, flags, rc):
-    if rc == 0:
-        logger.info("Connected to EMQX Serverless broker!")
+def on_connect(client, userdata, flags, reason_code, properties):
+    if reason_code.value == 0:
+        logger.info(f"Connected to MQTT Broker {MQTT_BROKER}")
     else:
-        logger.error(f"Failed to connect, return code {rc}")
+        logger.error(f"Failed to connect, return code {reason_code.value}")
 
-def connect_mqtt():
-    client = mqtt.Client(CLIENT_ID)
-    client.username_pw_set(USERNAME, PASSWORD)
-    client.tls_set(ca_certs=CA_CERT, tls_version=ssl.PROTOCOL_TLS_CLIENT)
-    client.on_connect = on_connect
-    client.connect(BROKER, PORT)
-    return client
-
-mqtt_client = connect_mqtt()
+mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=DEVICE_NAME)
+mqtt_client.tls_set(ca_certs=CA_CERT, tls_version=ssl.PROTOCOL_TLS_CLIENT)
+mqtt_client.username_pw_set(MQTT_USER, MQTT_PASS)
+mqtt_client.on_connect = on_connect
+mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
 mqtt_client.loop_start()
 
 
-def read_dht11():
-    if not DHT_AVAILABLE:
-        return None
-    h, t = Adafruit_DHT.read_retry(Adafruit_DHT.DHT11, DHT_PIN)
-    if h is not None and t is not None:
-        return {"temperature": round(t,1), "humidity": round(h,1), "timestamp": datetime.utcnow().isoformat()}
-    return None
+dht_device = None
+if adafruit_dht and board:
+    # Use BCM Pin 4, which is board.D4
+    try:
+        dht_device = adafruit_dht.DHT11(board.D4)
+    except Exception as e:
+        logger.error(f"Failed to initialize DHT11 sensor: {e}")
+        dht_device = None
 
-def read_ultrasonic():
-    if not GPIO_AVAILABLE:
+def read_dht11():
+    if not dht_device:
         return None
-    GPIO.output(TRIG_PIN, True)
-    time.sleep(0.00001)
-    GPIO.output(TRIG_PIN, False)
-    start, end = 0, 0
-    while GPIO.input(ECHO_PIN) == 0:
-        start = time.time()
-    while GPIO.input(ECHO_PIN) == 1:
-        end = time.time()
-    distance_cm = round(((end - start) * 34300) / 2, 2)
-    return {"distance_cm": distance_cm, "timestamp": datetime.utcnow().isoformat()}
+    try:
+        temperature_c = dht_device.temperature
+        humidity = dht_device.humidity
+        
+        if humidity is not None and temperature_c is not None:
+            return {
+                "measurement": "sensor",
+                "fields": { "temperature": round(temperature_c, 1), "humidity": round(humidity, 1) },
+                "tags": {"device": DEVICE_NAME}
+            }
+        else:
+            return None
+    except RuntimeError as error:
+        logger.warning(f"DHT11 read error: {error.args[0]}")
+        return None
 
 def read_pi_metrics():
-    metrics = {}
-    metrics["cpu_percent"] = psutil.cpu_percent(interval=None)
-    metrics["per_core"] = psutil.cpu_percent(interval=None, percpu=True)
-    metrics["ram_percent"] = psutil.virtual_memory().percent
-    metrics["disk_percent"] = psutil.disk_usage('/').percent
-    metrics["load_avg"] = os.getloadavg()
-    metrics["net_io"] = psutil.net_io_counters()._asdict()
     try:
         with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
-            metrics["pi_temp"] = float(f.read().strip()) / 1000
-    except FileNotFoundError:
-        metrics["pi_temp"] = None
-    metrics["uptime_sec"] = time.time() - psutil.boot_time()
-    metrics["timestamp"] = datetime.utcnow().isoformat()
-    return metrics
+            pi_temp = round(float(f.read().strip()) / 1000, 1)
+    except Exception:
+        pi_temp = None
+    return {
+        "measurement": "metrics",
+        "fields": {
+            "cpu_percent": psutil.cpu_percent(interval=None),
+            "ram_percent": psutil.virtual_memory().percent,
+            "disk_percent": psutil.disk_usage('/').percent,
+            "pi_temp": pi_temp,
+        },
+        "tags": {"device": DEVICE_NAME}
+    }
 
-def publish_mqtt(topic, payload):
-    mqtt_client.publish(topic, json.dumps(payload))
-    logger.info(f"MQTT Published → {topic}: {payload}")
-
-def publish_influx(payload, bucket):
-    point = Point.from_dict(payload)
+def publish_data(payload, bucket, topic):
+    timestamp = datetime.now(ZoneInfo("Europe/Skopje"))
     try:
-        influx_client.write(bucket=bucket, record=point)
+        point = Point(payload["measurement"]).time(timestamp)
+        for k, v in payload["fields"].items():
+            if v is not None: point.field(k, v)
+        for tag, val in payload.get("tags", {}).items():
+            point.tag(tag, val)
+        influx_client.write(record=point, database=bucket)
+        logger.info(f"InfluxDB Published → {bucket}: {payload['measurement']}")
     except Exception as e:
         logger.error(f"Influx write error: {e}")
+    try:
+        mqtt_payload = payload.copy()
+        mqtt_payload['fields']['timestamp'] = timestamp.isoformat()
+        mqtt_client.publish(topic, str(mqtt_payload))
+        logger.info(f"MQTT Published → {topic}")
+    except Exception as e:
+        logger.error(f"MQTT publish error: {e}")
 
 
-next_metrics_time = time.time()
-while True:
-    # Pi metrics
-    metrics_data = read_pi_metrics()
-    publish_mqtt(TOPIC_METRICS, metrics_data)
-    publish_influx(metrics_data, INFLUX_BUCKET_METRICS)
-    
-    # Sensor data
-    if DHT_AVAILABLE:
-        sensor_data = read_dht11()
-        if sensor_data:
-            publish_mqtt(TOPIC_DHT11, sensor_data)
-            publish_influx(sensor_data, INFLUX_BUCKET_SENSOR)
-    elif GPIO_AVAILABLE:
-        sensor_data = read_ultrasonic()
-        if sensor_data:
-            publish_mqtt(TOPIC_ULTRASONIC, sensor_data)
-            publish_influx(sensor_data, INFLUX_BUCKET_SENSOR)
-    
-    time.sleep(SENSOR_INTERVAL)
+if __name__ == "__main__":
+    last_sensor_time = 0
+    last_metrics_time = 0
+    try:
+        while True:
+            now = time.time()
+            if now - last_sensor_time >= SENSOR_INTERVAL:
+                last_sensor_time = now
+                dht_data = read_dht11()
+                if dht_data:
+                    publish_data(dht_data, INFLUX_BUCKET_SENSOR, TOPICS["dht11"])
+            if now - last_metrics_time >= METRICS_INTERVAL:
+                last_metrics_time = now
+                metrics_data = read_pi_metrics()
+                if metrics_data:
+                    publish_data(metrics_data, INFLUX_BUCKET_METRICS, TOPICS["metrics"])
+            time.sleep(1)
+    except KeyboardInterrupt:
+        logger.info("Script interrupted. Shutting down.")
+    finally:
+        if dht_device:
+            dht_device.exit()
+        mqtt_client.loop_stop()
+        influx_client.close()
+        logger.info("Clients closed. Exiting.")
