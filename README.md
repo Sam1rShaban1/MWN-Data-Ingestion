@@ -115,25 +115,33 @@ With the new detailed metrics, you can create more advanced visualizations.
 **Example Query 1: Per-Core CPU Usage**
 This query uses a regular expression to graph the usage of all CPU cores on a single panel.
 ```flux
-from(bucket: "metrics")
-  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
-  |> filter(fn: (r) => r._measurement == "metrics")
-  |> filter(fn: (r) => r.device == "pi4")
-  |> filter(fn: (r) => r._field =~ /cpu_core_[0-9]+_percent/) // Regex to match all cores
-  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)
-  |> yield(name: "mean")
+SELECT
+  "cpu_core_0_percent",
+  "cpu_core_1_percent",
+  "cpu_core_2_percent",
+  "cpu_core_3_percent",
+  "time"
+FROM
+  "metrics"
+WHERE
+  "time" >= $__timeFrom
+  AND "time" <= $__timeTo
+  AND "device" = 'pi4'
 ```
 
 **Example Query 2: Network Traffic (Bytes Sent/Received)**
 This query visualizes both incoming and outgoing network traffic.
 ```flux
-from(bucket: "metrics")
-  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
-  |> filter(fn: (r) => r._measurement == "metrics")
-  |> filter(fn: (r) => r.device == "pi4")
-  |> filter(fn: (r) => r._field == "net_bytes_sent" or r._field == "net_bytes_recv")
-  |> derivative(unit: 1s, nonNegative: true) // Calculate bytes per second
-  |> yield(name: "rate")
+SELECT
+  "net_bytes_recv",
+  "net_bytes_sent",
+  "time"
+FROM
+  "metrics"
+WHERE
+  "time" >= $__timeFrom
+  AND "time" <= $__timeTo
+  AND "device" = 'pi4'
 ```
 
 ### C. Add MQTT as a Data Source (For Live Data)
