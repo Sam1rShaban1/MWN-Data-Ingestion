@@ -41,7 +41,7 @@ Run these commands in your Raspberry Pi terminal:
 ```bash
 # 1. Update system and install utilities
 sudo apt-get update
-sudo apt-get install -y mosquitto-clients libgpiod3
+sudo apt-get install -y libgpiod3
 
 # 2. Install required Python libraries
 pip3 install psutil paho-mqtt influxdb-client-3 adafruit-circuitpython-dht --break-system-packages
