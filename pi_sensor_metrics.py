@@ -99,53 +99,54 @@ def read_dht11():
         return None
 
 def read_pi_metrics():
+    fields = {}
+
     try:
         with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
-            pi_temp = round(float(f.read().strip()) / 1000, 1)
+            fields["pi_temp_c"] = round(float(f.read().strip()) / 1000, 1)
     except Exception:
-        pi_temp = None
+        fields["pi_temp_c"] = None
 
     mem = psutil.virtual_memory()
     swap = psutil.swap_memory()
+    fields["ram_total_mb"] = round(mem.total / (1024 * 1024), 2)
+    fields["ram_used_mb"] = round(mem.used / (1024 * 1024), 2)
+    fields["ram_percent"] = mem.percent
+    fields["swap_total_mb"] = round(swap.total / (1024 * 1024), 2)
+    fields["swap_used_mb"] = round(swap.used / (1024 * 1024), 2)
+    fields["swap_percent"] = swap.percent
 
     disk = psutil.disk_usage('/')
+    fields["disk_total_gb"] = round(disk.total / (1024 * 1024 * 1024), 2)
+    fields["disk_used_gb"] = round(disk.used / (1024 * 1024 * 1024), 2)
+    fields["disk_percent"] = disk.percent
 
+    fields["cpu_percent"] = psutil.cpu_percent(interval=None)
     try:
         cpu_freq = psutil.cpu_freq()
-        cpu_freq_current = round(cpu_freq.current, 2) if cpu_freq else None
+        fields["cpu_freq_mhz"] = round(cpu_freq.current, 2) if cpu_freq else None
     except Exception:
-        cpu_freq_current = None
+        fields["cpu_freq_mhz"] = None
 
-    net_io = psutil.net_io_counters()._asdict()
+    per_cpu_list = psutil.cpu_percent(interval=None, percpu=True)
+    for i, cpu_usage in enumerate(per_cpu_list):
+        fields[f"cpu_core_{i}_percent"] = cpu_usage
+
+    load_avg = os.getloadavg()
+    fields["load_avg_1m"] = load_avg[0]
+    fields["load_avg_5m"] = load_avg[1]
+    fields["load_avg_15m"] = load_avg[2]
+
+    net_io_dict = psutil.net_io_counters()._asdict()
+    for key, value in net_io_dict.items():
+        fields[f"net_{key}"] = value
+
+    fields["uptime_seconds"] = round(time.time() - psutil.boot_time())
+    fields["process_count"] = len(psutil.pids())
 
     return {
         "measurement": "metrics",
-        "fields": {
-            "cpu_percent": psutil.cpu_percent(interval=None),
-            "cpu_percent_per_core": psutil.cpu_percent(interval=None, percpu=True),
-            "cpu_freq_mhz": cpu_freq_current,
-            "load_avg_1m": os.getloadavg()[0],
-            "load_avg_5m": os.getloadavg()[1],
-            "load_avg_15m": os.getloadavg()[2],
-
-            "ram_total_mb": round(mem.total / (1024 * 1024), 2),
-            "ram_used_mb": round(mem.used / (1024 * 1024), 2),
-            "ram_percent": mem.percent,
-
-            "swap_total_mb": round(swap.total / (1024 * 1024), 2),
-            "swap_used_mb": round(swap.used / (1024 * 1024), 2),
-            "swap_percent": swap.percent,
-
-            "disk_total_gb": round(disk.total / (1024 * 1024 * 1024), 2),
-            "disk_used_gb": round(disk.used / (1024 * 1024 * 1024), 2),
-            "disk_percent": disk.percent,
-
-            "net_io": net_io,
-            
-            "pi_temp_c": pi_temp,
-            "uptime_seconds": round(time.time() - psutil.boot_time()),
-            "process_count": len(psutil.pids())
-        },
+        "fields": fields,
         "tags": {"device": DEVICE_NAME}
     }
 
