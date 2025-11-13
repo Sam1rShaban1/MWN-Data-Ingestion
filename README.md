@@ -101,10 +101,12 @@ mosquitto_sub \
 ### A. Add InfluxDB as a Data Source (For Historical Data)
 1.  In Grafana, go to **Connections** -> **Data Sources** and add a new **InfluxDB** source.
 2.  Configure using the **Flux** query language:
-    *   **URL:** `https://eu-central-1-1.aws.cloud2.influxdata.com` (use your region's URL).
+    *   **Query Language** `SQL`
+    *   **URL:** `https://eu-central-1-1.aws.cloud2.influxdata.com`
+    *   **Database** `metrics` or `sensor`
     *   **Organization:** `Mobile and Wireless Networks`
-    *   **Token:** Your InfluxDB API Token.
-3.  Click **Save & Test**.
+    *   **Token:** ```bash WCuamFMLkZLMO01_CZcIzTwbmwIi2g9cJPOtlnAFVM09QVCQ-O9elX7v2_lFuyl7DXNlrZ56X0teBOdAGaf-Og==```.
+4.  Click **Save & Test**.
 
 ### B. Create Dashboard Panels with Updated Flux Queries
 
