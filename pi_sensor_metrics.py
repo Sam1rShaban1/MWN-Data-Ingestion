@@ -104,13 +104,47 @@ def read_pi_metrics():
             pi_temp = round(float(f.read().strip()) / 1000, 1)
     except Exception:
         pi_temp = None
+
+    mem = psutil.virtual_memory()
+    swap = psutil.swap_memory()
+
+    disk = psutil.disk_usage('/')
+
+    try:
+        cpu_freq = psutil.cpu_freq()
+        cpu_freq_current = round(cpu_freq.current, 2) if cpu_freq else None
+    except Exception:
+        cpu_freq_current = None
+
+    net_io = psutil.net_io_counters()._asdict()
+
     return {
         "measurement": "metrics",
         "fields": {
             "cpu_percent": psutil.cpu_percent(interval=None),
-            "ram_percent": psutil.virtual_memory().percent,
-            "disk_percent": psutil.disk_usage('/').percent,
-            "pi_temp": pi_temp,
+            "cpu_percent_per_core": psutil.cpu_percent(interval=None, percpu=True),
+            "cpu_freq_mhz": cpu_freq_current,
+            "load_avg_1m": os.getloadavg()[0],
+            "load_avg_5m": os.getloadavg()[1],
+            "load_avg_15m": os.getloadavg()[2],
+
+            "ram_total_mb": round(mem.total / (1024 * 1024), 2),
+            "ram_used_mb": round(mem.used / (1024 * 1024), 2),
+            "ram_percent": mem.percent,
+
+            "swap_total_mb": round(swap.total / (1024 * 1024), 2),
+            "swap_used_mb": round(swap.used / (1024 * 1024), 2),
+            "swap_percent": swap.percent,
+
+            "disk_total_gb": round(disk.total / (1024 * 1024 * 1024), 2),
+            "disk_used_gb": round(disk.used / (1024 * 1024 * 1024), 2),
+            "disk_percent": disk.percent,
+
+            "net_io": net_io,
+            
+            "pi_temp_c": pi_temp,
+            "uptime_seconds": round(time.time() - psutil.boot_time()),
+            "process_count": len(psutil.pids())
         },
         "tags": {"device": DEVICE_NAME}
     }
