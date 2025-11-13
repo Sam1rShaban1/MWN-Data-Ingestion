@@ -118,9 +118,9 @@
           "color": {
             "mode": "continuous-GrYlRd"
           },
-          "decimals": 0,
+          "decimals": 2,
           "mappings": [],
-          "max": 6500000000,
+          "max": 2500,
           "min": 0,
           "thresholds": {
             "mode": "absolute",
@@ -135,7 +135,7 @@
               }
             ]
           },
-          "unit": "rothz"
+          "unit": "rotmhz"
         },
         "overrides": []
       },
@@ -2387,5 +2387,5 @@
   "timezone": "browser",
   "title": "Pi 15 Metrics",
   "uid": "adbddqq",
-  "version": 15
+  "version": 17
 }
