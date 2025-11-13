@@ -1,20 +1,22 @@
-# Project: Raspberry Pi Sensor & Metrics Monitoring
+# Raspberry Pi Sensor & Metrics Monitoring
 
-This project uses a Python script to collect sensor data (DHT11 Temperature/Humidity, HC-SR04 Ultrasonic Distance) and system metrics from a Raspberry Pi. The data is published to an EMQX Cloud MQTT Broker and simultaneously stored in an InfluxDB Cloud instance for long-term analysis and visualization.
+This project uses a Python script to collect a comprehensive set of sensor data (DHT11, HC-SR04) and detailed system metrics from a Raspberry Pi. The data is published to an EMQX Cloud MQTT Broker and simultaneously stored in an InfluxDB Cloud instance for long-term analysis and visualization.
 
 ### Monitored Data Points
-*   **Sensors (from `sensor` bucket):**
-    *   Temperature (`temperature`)
-    *   Humidity (`humidity`)
-    *   Distance (`distance_cm`)
-*   **System Metrics (from `metrics` bucket):**
-    *   CPU Usage (`cpu_percent`)
-    *   RAM Usage (`ram_percent`)
-    *   Disk Usage (`disk_percent`)
-    *   Core Temperature (`pi_temp`)
+
+The script collects a rich set of metrics, which are stored in InfluxDB under two main measurements: `sensor` and `metrics`.
+
+*   **Sensor Data (`sensor` measurement):**
+    *   Temperature & Humidity (`temperature`, `humidity`) from the DHT11.
+    *   Distance (`distance_cm`) from the HC-SR04 ultrasonic sensor.
+*   **Detailed System Metrics (`metrics` measurement):**
+    *   **CPU:** Overall Usage (`cpu_percent`), Per-Core Usage (`cpu_core_0_percent`, etc.), Core Frequency (`cpu_freq_mhz`), and Load Average (`load_avg_1m`, `5m`, `15m`).
+    *   **Memory:** Total/Used RAM & Swap in MB, and usage percentages.
+    *   **Disk:** Total/Used Disk space in GB, and usage percentage for the root partition.
+    *   **Network:** Bytes/packets sent & received, errors, and dropped packets.
+    *   **System:** Core Temperature (`pi_temp_c`), uptime, and total running processes.
 
 ### System Architecture
-The data flows through the system as follows:
 
 ```
                   ┌──────────────────┐      ┌────────────────────┐
@@ -37,109 +39,106 @@ Raspberry Pi ───► │ EMQX Cloud (MQTT)├─────►│ Grafana 
 
 ### B. Software Dependencies
 Run these commands in your Raspberry Pi terminal:
-
 ```bash
 # 1. Update system and install utilities
 sudo apt-get update
-sudo apt-get install -y libgpiod3
+sudo apt-get install -y mosquitto-clients libgpiod3
 
 # 2. Install required Python libraries
-pip3 install psutil paho-mqtt influxdb3-python adafruit-circuitpython-dht --break-system-packages
+pip3 install psutil paho-mqtt influxdb-client-3 adafruit-circuitpython-dht --break-system-packages
 ```
 
 ### C. Configuration
-The script requires credentials and connection details.
-
 1.  **Place Certificate:** Copy the `server-ca.crt` file into the same directory as the Python script.
-2.  **Set Environment Variables:** For security, it is best to set your credentials as environment variables.
-
+2.  **Set Environment Variables:** For security, set your credentials as environment variables.
     ```bash
     export INFLUXDB_TOKEN="your-influxdb-api-token"
     export MQTT_USER="your-mqtt-username"
     export MQTT_PASS="your-mqtt-password"
     ```
-    You can add these lines to your `~/.bashrc` file to make them permanent.
+    (Add these to `~/.bashrc` to make them permanent).
 
 ### D. Running the Script
-With the configuration in place, execute the script:
+Execute the script from the project directory:
 ```bash
 python3 pi_sensor_metrics.py
 ```
 
 ---
 
-## 2. Connecting Grafana for Visualization
+## 2. Verifying Data Flow via MQTT
 
-You can visualize data in Grafana in two ways: from InfluxDB for historical trends, and directly from EMQX for live, real-time views.
+To confirm data is being sent over MQTT, you can use `mosquitto_sub` in a separate terminal.
 
-### Method 1: Visualizing Historical Data from InfluxDB (Recommended)
-
-This method queries the data stored in your InfluxDB Cloud instance.
-
-#### A. Add InfluxDB as a Data Source
-1.  In Grafana, navigate to **Connections** -> **Data Sources**.
-2.  Click **Add data source** and search for **InfluxDB**.
-3.  Configure the settings:
-    *   **Query Language:** `Flux`
-    *   **URL:** `https://eu-central-1-1.aws.cloud2.influxdata.com` (use your region's URL).
-    *   **Organization:** `Mobile and Wireless Networks`
-    *   **Token:** Paste your InfluxDB API Token (the value from `INFLUXDB_TOKEN`).
-4.  Click **Save & Test**. You should see a success message.
-
-#### B. Create Dashboard Panels with Flux Queries
-
-**Example Query 1: Temperature from a specific Pi**
-```flux
-from(bucket: "sensor")
-  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
-  |> filter(fn: (r) => r._measurement == "sensor")
-  |> filter(fn: (r) => r.device == "pi15")  // Hardcoded device name
-  |> filter(fn: (r) => r._field == "temperature")
-  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)
-  |> yield(name: "mean_temp")
+**To subscribe to all topics from a specific Pi (e.g., `pi15`):**
+```bash
+mosquitto_sub \
+  -h "t0761115.ala.eu-central-1.emqxsl.com" \
+  -p 8883 \
+  -u "your_user" \
+  -P "your_pass" \
+  --cafile "./server-ca.crt" \
+  -t "pi15/#" \
+  -v
 ```
 
-**Example Query 2: Ultrasonic Distance (using a Grafana Variable)**
-To make your dashboard dynamic, create a Grafana variable named `device`.
-1.  Go to Dashboard Settings -> Variables -> New variable.
-2.  Set **Type** to `Query`, select your InfluxDB source.
-3.  Use this Flux query to populate the variable with device names:
-    ```flux
-    import "influxdata/influxdb/schema"
-    schema.tagValues(bucket: "metrics", tag: "device")
-    ```
-4.  Now, use `$device` in your panel queries:
-    ```flux
-    from(bucket: "sensor")
-      |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
-      |> filter(fn: (r) => r._measurement == "sensor")
-      |> filter(fn: (r) => r.device == "${device}") // Use the variable
-      |> filter(fn: (r) => r._field == "distance_cm")
-      |> yield(name: "distance")
-    ```
+**Example: Subscribing specifically to the DHT11 sensor data from `pi15`:**
+```bash
+mosquitto_sub \
+  -h "t07611115.ala.eu-central-1.emqxsl.com" \
+  -p 8883 \
+  -u "samir" \
+  -P "admin" \
+  --cafile "./server-ca.crt" \
+  -t "pi15/dht11" \
+  -v
+```
 
-### Method 2: Visualizing Live Data from EMQX (MQTT)
+---
 
-This method gives you a real-time view of the data as it's published.
+## 3. Connecting Grafana for Visualization
 
-#### A. Add MQTT as a Data Source
-1.  In Grafana, go to **Connections** -> **Data Sources**.
-2.  Search for and install the **Grafana MQTT data source** plugin if it's not already installed.
-3.  Add it as a new data source and configure it:
-    *   **URL:** `mqtts://t0761115.ala.eu-central-1.emqxsl.com` (note the `mqtts://` prefix).
+### A. Add InfluxDB as a Data Source (For Historical Data)
+1.  In Grafana, go to **Connections** -> **Data Sources** and add a new **InfluxDB** source.
+2.  Configure using the **Flux** query language:
+    *   **URL:** `https://eu-central-1-1.aws.cloud2.influxdata.com` (use your region's URL).
+    *   **Organization:** `Mobile and Wireless Networks`
+    *   **Token:** Your InfluxDB API Token.
+3.  Click **Save & Test**.
+
+### B. Create Dashboard Panels with Updated Flux Queries
+
+With the new detailed metrics, you can create more advanced visualizations.
+
+**Example Query 1: Per-Core CPU Usage**
+This query uses a regular expression to graph the usage of all CPU cores on a single panel.
+```flux
+from(bucket: "metrics")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r._measurement == "metrics")
+  |> filter(fn: (r) => r.device == "pi4")
+  |> filter(fn: (r) => r._field =~ /cpu_core_[0-9]+_percent/) // Regex to match all cores
+  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)
+  |> yield(name: "mean")
+```
+
+**Example Query 2: Network Traffic (Bytes Sent/Received)**
+This query visualizes both incoming and outgoing network traffic.
+```flux
+from(bucket: "metrics")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r._measurement == "metrics")
+  |> filter(fn: (r) => r.device == "pi4")
+  |> filter(fn: (r) => r._field == "net_bytes_sent" or r._field == "net_bytes_recv")
+  |> derivative(unit: 1s, nonNegative: true) // Calculate bytes per second
+  |> yield(name: "rate")
+```
+
+### C. Add MQTT as a Data Source (For Live Data)
+1.  Install the **Grafana MQTT data source** plugin if needed.
+2.  Add it as a new data source:
+    *   **URL:** `mqtts://t0761115.ala.eu-central-1.emqxsl.com`
     *   **Port:** `8883`
-    *   **Authentication:** Enable **Basic Auth** and enter your MQTT Username and Password.
-    *   **TLS/SSL:**
-        *   Enable **TLS Client Auth**.
-        *   Set **With CA Cert** to `true`.
-        *   Paste the **entire content** of your `server-ca.crt` file into the "TLS CA Cert" text box.
-4.  Click **Save & Test**.
-
-#### B. Create a Live Dashboard Panel
-1.  Create a new panel and select your MQTT data source.
-2.  In the query editor, set the **Topic** to subscribe to, for example: `pi15/dht11`.
-3.  The data will arrive as a JSON string. Use Grafana's **Transform** tab to parse it:
-    *   Add a **Parse fields** transformation.
-    *   **Source:** Select the field containing the MQTT message (usually `message`).
-    *   **Format:** `JSON`
-4.  This will extract the fields (`temperature`, `humidity`, etc.) which you can then use in your visualization. For a live graph, set the panel's refresh rate to a low value (e.g., 5s).
+    *   **Authentication:** Enable **Basic Auth** and enter your MQTT credentials.
+    *   **TLS/SSL:** Enable **TLS Client Auth**, set **With CA Cert** to `true`, and paste the contents of `server-ca.crt` into the "TLS CA Cert" box.
+3.  **Save & Test**. In a panel, subscribe to a topic (e.g., `pi4/metrics`) and use Grafana's **Transform** tab to parse the incoming JSON.
