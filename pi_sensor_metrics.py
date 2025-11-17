@@ -87,6 +87,7 @@ def read_dht11():
         humidity = dht_device.humidity
         
         if humidity is not None and temperature_c is not None:
+            logger.info(f"Temperature: {round(temperature_c, 1)}°C | Humidity {round(humidity, 1)}%")
             return {
                 "measurement": "sensor",
                 "fields": { "temperature": round(temperature_c, 1), "humidity": round(humidity, 1) },
