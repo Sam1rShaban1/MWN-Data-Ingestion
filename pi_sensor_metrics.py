@@ -25,33 +25,6 @@ except ImportError:
     adafruit_dht = None
     board = None
 
-# --- Ultrasonic HC-SR04 setup ---
-class HCSR04:
-    def __init__(self, trig_pin, echo_pin):
-        if not GPIO:
-            raise RuntimeError("RPi.GPIO is required for HC-SR04")
-        self.trig_pin = trig_pin
-        self.echo_pin = echo_pin
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(self.trig_pin, GPIO.OUT)
-        GPIO.setup(self.echo_pin, GPIO.IN)
-
-    def distance_cm(self):
-        # send pulse
-        GPIO.output(self.trig_pin, True)
-        time.sleep(0.00001)
-        GPIO.output(self.trig_pin, False)
-        start_time = time.time()
-        stop_time = time.time()
-
-        # save start
-        while GPIO.input(self.echo_pin) == 0:
-            start_time = time.time()
-        while GPIO.input(self.echo_pin) == 1:
-            stop_time = time.time()
-        elapsed = stop_time - start_time
-        distance = (elapsed * 34300) / 2  # cm
-        return round(distance, 1)
 
 DEVICE_NAME = socket.gethostname()
 
@@ -63,8 +36,8 @@ CA_CERT = "./server-ca.crt"
 
 TOPICS = {
     "dht11": f"{DEVICE_NAME}/dht11",
-    "metrics": f"{DEVICE_NAME}/metrics",
-    "ultrasonic": f"{DEVICE_NAME}/ultrasonic"
+    "ultrasonic": f"{DEVICE_NAME}/ultrasonic",
+    "metrics": f"{DEVICE_NAME}/metrics"
 }
 
 INFLUX_TOKEN = os.environ.get("INFLUXDB_TOKEN")
@@ -73,12 +46,17 @@ INFLUX_HOST = "https://eu-central-1-1.aws.cloud2.influxdata.com"
 INFLUX_BUCKET_SENSOR = "sensor"
 INFLUX_BUCKET_METRICS = "metrics"
 
+
 SENSOR_INTERVAL = 10
 METRICS_INTERVAL = 60
-ULTRASONIC_INTERVAL = 15  # publish every 15 seconds
+
+GPIO_TRIGGER = 23
+GPIO_ECHO = 24
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
+
 
 influx_client = InfluxDBClient3(host=INFLUX_HOST, token=INFLUX_TOKEN, org=INFLUX_ORG)
 
@@ -95,7 +73,7 @@ mqtt_client.on_connect = on_connect
 mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
 mqtt_client.loop_start()
 
-# --- DHT11 setup ---
+
 dht_device = None
 if adafruit_dht and board:
     try:
@@ -104,56 +82,75 @@ if adafruit_dht and board:
         logger.error(f"Failed to initialize DHT11 sensor: {e}")
         dht_device = None
 
-# --- Ultrasonic setup ---
-ultrasonic_sensor = None
 if GPIO:
     try:
-        ultrasonic_sensor = HCSR04(trig_pin=23, echo_pin=24)  # adjust pins as needed
-        logger.info("HC-SR04 ultrasonic sensor initialized")
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(GPIO_TRIGGER, GPIO.OUT)
+        GPIO.setup(GPIO_ECHO, GPIO.IN)
+        logger.info("HC-SR04 GPIO pins initialized.")
     except Exception as e:
-        logger.error(f"Failed to initialize HC-SR04: {e}")
-        ultrasonic_sensor = None
+        logger.error(f"Failed to initialize HC-SR04 GPIO: {e}")
+        GPIO = None
 
 def read_dht11():
     if not dht_device:
-        logger.warning("DHT11 sensor not initialized or unavailable")
         return None
     try:
         temperature_c = dht_device.temperature
         humidity = dht_device.humidity
+        
         if humidity is not None and temperature_c is not None:
-            data = {
+            logger.info(f"DHT11 Read: Temp={temperature_c:.1f}°C, Humidity={humidity:.1f}%")
+            return {
                 "measurement": "sensor",
-                "fields": {"temperature": round(temperature_c, 1), "humidity": round(humidity, 1)},
+                "fields": { "temperature": round(temperature_c, 1), "humidity": round(humidity, 1) },
                 "tags": {"device": DEVICE_NAME}
             }
-            logger.info(f"DHT11 read → Temp: {data['fields']['temperature']} °C, Humidity: {data['fields']['humidity']}%")
-            return data
         else:
-            logger.warning("DHT11 read returned None for temperature or humidity")
             return None
     except RuntimeError as error:
         logger.warning(f"DHT11 read error: {error.args[0]}")
         return None
 
-
-def read_ultrasonic():
-    if not ultrasonic_sensor:
+def read_hcsr04():
+    if not GPIO:
         return None
     try:
-        distance = ultrasonic_sensor.distance_cm()
-        logger.info(f"Ultrasonic distance: {distance} cm")
+        GPIO.output(GPIO_TRIGGER, True)
+        time.sleep(0.00001)
+        GPIO.output(GPIO_TRIGGER, False)
+
+        start_time = time.time()
+        stop_time = time.time()
+
+        while GPIO.input(GPIO_ECHO) == 0:
+            start_time = time.time()
+            if start_time - stop_time > 0.1:
+                return None
+
+        while GPIO.input(GPIO_ECHO) == 1:
+            stop_time = time.time()
+            if stop_time - start_time > 0.1:
+                return None
+
+        time_elapsed = stop_time - start_time
+        distance = (time_elapsed * 34300) / 2
+        
+        logger.info(f"HC-SR04 Read: Distance={distance:.2f} cm, Time={time_elapsed:.2f}")
+        
         return {
-            "measurement": "ultrasonic",
-            "fields": {"distance_cm": distance},
+            "measurement": "distance",
+            "fields": { "distance_cm": round(distance, 2) },
             "tags": {"device": DEVICE_NAME}
         }
+
     except Exception as e:
-        logger.error(f"Ultrasonic read error: {e}")
+        logger.error(f"HC-SR04 read error: {e}")
         return None
 
 def read_pi_metrics():
     fields = {}
+
     try:
         with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
             fields["pi_temp_c"] = round(float(f.read().strip()) / 1000, 1)
@@ -223,39 +220,37 @@ def publish_data(payload, bucket, topic):
     except Exception as e:
         logger.error(f"MQTT publish error: {e}")
 
+
 if __name__ == "__main__":
     last_sensor_time = 0
     last_metrics_time = 0
-    last_ultrasonic_time = 0
     try:
         while True:
             now = time.time()
             if now - last_sensor_time >= SENSOR_INTERVAL:
                 last_sensor_time = now
+                
                 dht_data = read_dht11()
                 if dht_data:
                     publish_data(dht_data, INFLUX_BUCKET_SENSOR, TOPICS["dht11"])
+                
+                hcsr04_data = read_hcsr04()
+                if hcsr04_data:
+                    publish_data(hcsr04_data, INFLUX_BUCKET_SENSOR, TOPICS["ultrasonic"])
 
             if now - last_metrics_time >= METRICS_INTERVAL:
                 last_metrics_time = now
                 metrics_data = read_pi_metrics()
                 if metrics_data:
                     publish_data(metrics_data, INFLUX_BUCKET_METRICS, TOPICS["metrics"])
-
-            if now - last_ultrasonic_time >= ULTRASONIC_INTERVAL:
-                last_ultrasonic_time = now
-                ultrasonic_data = read_ultrasonic()
-                if ultrasonic_data:
-                    publish_data(ultrasonic_data, INFLUX_BUCKET_SENSOR, TOPICS["ultrasonic"])
-
             time.sleep(1)
     except KeyboardInterrupt:
         logger.info("Script interrupted. Shutting down.")
     finally:
         if dht_device:
             dht_device.exit()
-        mqtt_client.loop_stop()
-        influx_client.close()
         if GPIO:
             GPIO.cleanup()
+        mqtt_client.loop_stop()
+        influx_client.close()
         logger.info("Clients closed. Exiting.")
