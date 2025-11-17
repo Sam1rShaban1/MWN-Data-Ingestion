@@ -14,17 +14,14 @@ from influxdb_client_3 import InfluxDBClient3, Point
 try:
     import RPi.GPIO as GPIO
 except (RuntimeError, ImportError):
-    print("WARNING: RPi.GPIO not available.")
     GPIO = None
 
 try:
     import adafruit_dht
     import board
 except ImportError:
-    print("WARNING: adafruit-circuitpython-dht not available. DHT11 sensor will be disabled.")
     adafruit_dht = None
     board = None
-
 
 DEVICE_NAME = socket.gethostname()
 
@@ -36,7 +33,8 @@ CA_CERT = "./server-ca.crt"
 
 TOPICS = {
     "dht11": f"{DEVICE_NAME}/dht11",
-    "metrics": f"{DEVICE_NAME}/metrics"
+    "metrics": f"{DEVICE_NAME}/metrics",
+    "ultrasonic": f"{DEVICE_NAME}/ultrasonic"
 }
 
 INFLUX_TOKEN = os.environ.get("INFLUXDB_TOKEN")
@@ -45,14 +43,11 @@ INFLUX_HOST = "https://eu-central-1-1.aws.cloud2.influxdata.com"
 INFLUX_BUCKET_SENSOR = "sensor"
 INFLUX_BUCKET_METRICS = "metrics"
 
-
 SENSOR_INTERVAL = 10
 METRICS_INTERVAL = 60
 
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
-
 
 influx_client = InfluxDBClient3(host=INFLUX_HOST, token=INFLUX_TOKEN, org=INFLUX_ORG)
 
@@ -69,45 +64,123 @@ mqtt_client.on_connect = on_connect
 mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
 mqtt_client.loop_start()
 
+no_sensor_logged = False
 
-dht_device = None
-if adafruit_dht and board:
-    # Use BCM Pin 4, which is board.D4
-    try:
-        dht_device = adafruit_dht.DHT11(board.D4)
-    except Exception as e:
-        logger.error(f"Failed to initialize DHT11 sensor: {e}")
+def init_dht11():
+    global dht_device
+    if adafruit_dht and board:
+        try:
+            dht_device = adafruit_dht.DHT11(board.D4)
+            logger.info("DHT11 initialized.")
+        except:
+            dht_device = None
+    else:
         dht_device = None
 
+init_dht11()
+
+HC_TRIGGER_PIN = 23
+HC_ECHO_PIN = 24
+ultrasonic_available = False
+
+def init_ultrasonic():
+    global ultrasonic_available
+    if GPIO:
+        try:
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(HC_TRIGGER_PIN, GPIO.OUT)
+            GPIO.setup(HC_ECHO_PIN, GPIO.IN)
+            ultrasonic_available = True
+            logger.info("HC-SR04 initialized.")
+        except:
+            ultrasonic_available = False
+    else:
+        ultrasonic_available = False
+
+init_ultrasonic()
+
 def read_dht11():
+    global dht_device
     if not dht_device:
         return None
     try:
         temperature_c = dht_device.temperature
         humidity = dht_device.humidity
-        
-        if humidity is not None and temperature_c is not None:
-            logger.info(f"Temperature: {round(temperature_c, 1)}°C | Humidity {round(humidity, 1)}%")
-            return {
-                "measurement": "sensor",
-                "fields": { "temperature": round(temperature_c, 1), "humidity": round(humidity, 1) },
-                "tags": {"device": DEVICE_NAME}
-            }
-        else:
+        if temperature_c is None or humidity is None:
             return None
-    except RuntimeError as error:
-        logger.warning(f"DHT11 read error: {error.args[0]}")
+        return {
+            "measurement": "dht11",
+            "fields": {
+                "temperature": round(temperature_c, 1),
+                "humidity": round(humidity, 1)
+            },
+            "tags": {"device": DEVICE_NAME}
+        }
+    except:
+        init_dht11()
+        return None
+
+def read_ultrasonic():
+    global ultrasonic_available
+    if not ultrasonic_available:
+        return None
+    try:
+        GPIO.output(HC_TRIGGER_PIN, True)
+        time.sleep(0.00001)
+        GPIO.output(HC_TRIGGER_PIN, False)
+        start_time = time.time()
+        while GPIO.input(HC_ECHO_PIN) == 0:
+            start_time = time.time()
+        stop_time = time.time()
+        while GPIO.input(HC_ECHO_PIN) == 1:
+            stop_time = time.time()
+        travel_time = stop_time - start_time
+        travel_time_us = round(travel_time * 1_000_000, 1)
+        distance_cm = round((travel_time * 34300) / 2, 1)
+        return {
+            "measurement": "ultrasonic",
+            "fields": {
+                "distance_cm": distance_cm,
+                "travel_time_us": travel_time_us
+            },
+            "tags": {"device": DEVICE_NAME}
+        }
+    except:
+        init_ultrasonic()
+        return None
+
+def read_any_sensor():
+    global no_sensor_logged
+    try:
+        data = read_dht11()
+        if data:
+            if no_sensor_logged:
+                logger.info("Sensor detected again.")
+            no_sensor_logged = False
+            return data
+        data = read_ultrasonic()
+        if data:
+            if no_sensor_logged:
+                logger.info("Sensor detected again.")
+            no_sensor_logged = False
+            return data
+        if not no_sensor_logged:
+            logger.info("No sensor connected.")
+            no_sensor_logged = True
+        return None
+    except:
+        if not no_sensor_logged:
+            logger.info("No sensor connected.")
+            no_sensor_logged = True
         return None
 
 def read_pi_metrics():
     fields = {}
-
     try:
         with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
             fields["pi_temp_c"] = round(float(f.read().strip()) / 1000, 1)
-    except Exception:
+    except:
         fields["pi_temp_c"] = None
-
     mem = psutil.virtual_memory()
     swap = psutil.swap_memory()
     fields["ram_total_mb"] = round(mem.total / (1024 * 1024), 2)
@@ -116,35 +189,28 @@ def read_pi_metrics():
     fields["swap_total_mb"] = round(swap.total / (1024 * 1024), 2)
     fields["swap_used_mb"] = round(swap.used / (1024 * 1024), 2)
     fields["swap_percent"] = swap.percent
-
     disk = psutil.disk_usage('/')
     fields["disk_total_gb"] = round(disk.total / (1024 * 1024 * 1024), 2)
     fields["disk_used_gb"] = round(disk.used / (1024 * 1024 * 1024), 2)
     fields["disk_percent"] = disk.percent
-
     fields["cpu_percent"] = psutil.cpu_percent(interval=None)
     try:
         cpu_freq = psutil.cpu_freq()
         fields["cpu_freq_mhz"] = round(cpu_freq.current, 2) if cpu_freq else None
-    except Exception:
+    except:
         fields["cpu_freq_mhz"] = None
-
     per_cpu_list = psutil.cpu_percent(interval=None, percpu=True)
     for i, cpu_usage in enumerate(per_cpu_list):
         fields[f"cpu_core_{i}_percent"] = cpu_usage
-
     load_avg = os.getloadavg()
     fields["load_avg_1m"] = load_avg[0]
     fields["load_avg_5m"] = load_avg[1]
     fields["load_avg_15m"] = load_avg[2]
-
     net_io_dict = psutil.net_io_counters()._asdict()
     for key, value in net_io_dict.items():
         fields[f"net_{key}"] = value
-
     fields["uptime_seconds"] = round(time.time() - psutil.boot_time())
     fields["process_count"] = len(psutil.pids())
-
     return {
         "measurement": "metrics",
         "fields": fields,
@@ -156,7 +222,8 @@ def publish_data(payload, bucket, topic):
     try:
         point = Point(payload["measurement"]).time(timestamp)
         for k, v in payload["fields"].items():
-            if v is not None: point.field(k, v)
+            if v is not None:
+                point.field(k, v)
         for tag, val in payload.get("tags", {}).items():
             point.tag(tag, val)
         influx_client.write(record=point, database=bucket)
@@ -171,7 +238,6 @@ def publish_data(payload, bucket, topic):
     except Exception as e:
         logger.error(f"MQTT publish error: {e}")
 
-
 if __name__ == "__main__":
     last_sensor_time = 0
     last_metrics_time = 0
@@ -180,9 +246,9 @@ if __name__ == "__main__":
             now = time.time()
             if now - last_sensor_time >= SENSOR_INTERVAL:
                 last_sensor_time = now
-                dht_data = read_dht11()
-                if dht_data:
-                    publish_data(dht_data, INFLUX_BUCKET_SENSOR, TOPICS["dht11"])
+                sensor_data = read_any_sensor()
+                if sensor_data:
+                    publish_data(sensor_data, INFLUX_BUCKET_SENSOR, TOPICS[sensor_data["measurement"]])
             if now - last_metrics_time >= METRICS_INTERVAL:
                 last_metrics_time = now
                 metrics_data = read_pi_metrics()
@@ -192,8 +258,11 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("Script interrupted. Shutting down.")
     finally:
-        if dht_device:
-            dht_device.exit()
+        try:
+            if dht_device:
+                dht_device.exit()
+        except:
+            pass
         mqtt_client.loop_stop()
         influx_client.close()
         logger.info("Clients closed. Exiting.")
