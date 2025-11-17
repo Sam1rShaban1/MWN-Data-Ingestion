@@ -45,7 +45,7 @@ sudo apt-get update
 sudo apt-get install -y mosquitto-clients libgpiod3
 
 # 2. Install required Python libraries
-pip3 install psutil paho-mqtt influxdb-client-3 adafruit-circuitpython-dht --break-system-packages
+pip3 install psutil paho-mqtt influxdb3-python adafruit-circuitpython-dht --break-system-packages RPi.GPIO
 ```
 
 ### C. Configuration
