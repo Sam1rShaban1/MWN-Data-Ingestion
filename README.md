@@ -105,7 +105,8 @@ mosquitto_sub \
     *   **URL:** `https://eu-central-1-1.aws.cloud2.influxdata.com`
     *   **Database** `metrics` or `sensor`
     *   **Organization:** `Mobile and Wireless Networks`
-    *   **Token:** ```bash WCuamFMLkZLMO01_CZcIzTwbmwIi2g9cJPOtlnAFVM09QVCQ-O9elX7v2_lFuyl7DXNlrZ56X0teBOdAGaf-Og==```.
+    *   **Token:** 
+```bash WCuamFMLkZLMO01_CZcIzTwbmwIi2g9cJPOtlnAFVM09QVCQ-O9elX7v2_lFuyl7DXNlrZ56X0teBOdAGaf-Og==```.
 4.  Click **Save & Test**.
 
 ### B. Create Dashboard Panels with Updated Flux Queries
