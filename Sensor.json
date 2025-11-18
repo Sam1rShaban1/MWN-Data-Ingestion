@@ -259,7 +259,7 @@
           "table": "sensor"
         }
       ],
-      "title": "Pi 15 Minimum Temp",
+      "title": "Pi 15 Minimum Temperature",
       "transparent": true,
       "type": "stat"
     },
