@@ -152,3 +152,7 @@ WHERE
     *   **Authentication:** Enable **Basic Auth** and enter your MQTT credentials.
     *   **TLS/SSL:** Enable **TLS Client Auth**, set **With CA Cert** to `true`, and paste the contents of `server-ca.crt` into the "TLS CA Cert" box.
 3.  **Save & Test**. In a panel, subscribe to a topic (e.g., `pi4/metrics`) and use Grafana's **Transform** tab to parse the incoming JSON.
+#### Example MQTT command
+```bash
+mosquitto_sub   -h "t0761115.ala.eu-central-1.emqxsl.com"   -p 8883   -u "samir"   -P "admin"   --cafile "./server-ca.crt"   -t "pi4/metrics"   -v
+```
