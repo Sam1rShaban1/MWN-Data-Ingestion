@@ -79,7 +79,7 @@
           "dataset": "iox",
           "editorMode": "builder",
           "format": "table",
-          "rawSql": "SELECT \"cpu_percent\" FROM \"metrics\" WHERE \"time\" >= $__timeFrom AND \"time\" <= $__timeTo AND \"device\" = 'pi14' ",
+          "rawSql": "SELECT \"cpu_percent\" FROM \"metrics\" WHERE \"time\" >= $__timeFrom AND \"time\" <= $__timeTo ",
           "refId": "A",
           "sql": {
             "columns": [
@@ -100,35 +100,7 @@
                 },
                 "type": "groupBy"
               }
-            ],
-            "whereJsonTree": {
-              "children1": [
-                {
-                  "id": "b8abba98-0123-4456-b89a-b19a96099af2",
-                  "properties": {
-                    "field": "device",
-                    "fieldSrc": "field",
-                    "operator": "equal",
-                    "value": [
-                      "pi14"
-                    ],
-                    "valueError": [
-                      null
-                    ],
-                    "valueSrc": [
-                      "value"
-                    ],
-                    "valueType": [
-                      "text"
-                    ]
-                  },
-                  "type": "rule"
-                }
-              ],
-              "id": "ba888998-0123-4456-b89a-b19a9608c992",
-              "type": "group"
-            },
-            "whereString": "device = 'pi14'"
+            ]
           },
           "table": "metrics"
         }
@@ -195,7 +167,7 @@
           "dataset": "iox",
           "editorMode": "builder",
           "format": "table",
-          "rawSql": "SELECT \"cpu_freq_mhz\" FROM \"metrics\" WHERE \"time\" >= $__timeFrom AND \"time\" <= $__timeTo AND \"device\" = 'pi14' ",
+          "rawSql": "SELECT \"cpu_freq_mhz\" FROM \"metrics\" WHERE \"time\" >= $__timeFrom AND \"time\" <= $__timeTo ",
           "refId": "A",
           "sql": {
             "columns": [
@@ -216,35 +188,7 @@
                 },
                 "type": "groupBy"
               }
-            ],
-            "whereJsonTree": {
-              "children1": [
-                {
-                  "id": "8a89ba98-4567-489a-bcde-f19a96095d34",
-                  "properties": {
-                    "field": "device",
-                    "fieldSrc": "field",
-                    "operator": "equal",
-                    "value": [
-                      "pi14"
-                    ],
-                    "valueError": [
-                      null
-                    ],
-                    "valueSrc": [
-                      "value"
-                    ],
-                    "valueType": [
-                      "text"
-                    ]
-                  },
-                  "type": "rule"
-                }
-              ],
-              "id": "ba888998-0123-4456-b89a-b19a9608c992",
-              "type": "group"
-            },
-            "whereString": "device = 'pi14'"
+            ]
           },
           "table": "metrics"
         }
@@ -311,7 +255,7 @@
           "dataset": "iox",
           "editorMode": "builder",
           "format": "table",
-          "rawSql": "SELECT \"uptime_seconds\" FROM \"metrics\" WHERE \"time\" >= $__timeFrom AND \"time\" <= $__timeTo AND \"device\" = 'pi14' ",
+          "rawSql": "SELECT \"uptime_seconds\" FROM \"metrics\" WHERE \"time\" >= $__timeFrom AND \"time\" <= $__timeTo ",
           "refId": "A",
           "sql": {
             "columns": [
@@ -332,35 +276,7 @@
                 },
                 "type": "groupBy"
               }
-            ],
-            "whereJsonTree": {
-              "children1": [
-                {
-                  "id": "989aaa9a-cdef-4012-b456-719a9608dc25",
-                  "properties": {
-                    "field": "device",
-                    "fieldSrc": "field",
-                    "operator": "equal",
-                    "value": [
-                      "pi14"
-                    ],
-                    "valueError": [
-                      null
-                    ],
-                    "valueSrc": [
-                      "value"
-                    ],
-                    "valueType": [
-                      "text"
-                    ]
-                  },
-                  "type": "rule"
-                }
-              ],
-              "id": "ba888998-0123-4456-b89a-b19a9608c992",
-              "type": "group"
-            },
-            "whereString": "device = 'pi14'"
+            ]
           },
           "table": "metrics"
         }
@@ -427,7 +343,7 @@
           "dataset": "iox",
           "editorMode": "builder",
           "format": "table",
-          "rawSql": "SELECT \"process_count\" FROM \"metrics\" WHERE \"time\" >= $__timeFrom AND \"time\" <= $__timeTo AND \"device\" = 'pi14' ",
+          "rawSql": "SELECT \"process_count\" FROM \"metrics\" WHERE \"time\" >= $__timeFrom AND \"time\" <= $__timeTo ",
           "refId": "A",
           "sql": {
             "columns": [
@@ -448,35 +364,7 @@
                 },
                 "type": "groupBy"
               }
-            ],
-            "whereJsonTree": {
-              "children1": [
-                {
-                  "id": "98988bbb-cdef-4012-b456-719a9609cb17",
-                  "properties": {
-                    "field": "device",
-                    "fieldSrc": "field",
-                    "operator": "equal",
-                    "value": [
-                      "pi14"
-                    ],
-                    "valueError": [
-                      null
-                    ],
-                    "valueSrc": [
-                      "value"
-                    ],
-                    "valueType": [
-                      "text"
-                    ]
-                  },
-                  "type": "rule"
-                }
-              ],
-              "id": "ba888998-0123-4456-b89a-b19a9608c992",
-              "type": "group"
-            },
-            "whereString": "device = 'pi14'"
+            ]
           },
           "table": "metrics"
         }
@@ -543,7 +431,7 @@
           "dataset": "iox",
           "editorMode": "builder",
           "format": "table",
-          "rawSql": "SELECT \"pi_temp_c\" FROM \"metrics\" WHERE \"time\" >= $__timeFrom AND \"time\" <= $__timeTo AND \"device\" = 'pi14' ",
+          "rawSql": "SELECT \"pi_temp_c\" FROM \"metrics\" WHERE \"time\" >= $__timeFrom AND \"time\" <= $__timeTo ",
           "refId": "A",
           "sql": {
             "columns": [
@@ -564,35 +452,7 @@
                 },
                 "type": "groupBy"
               }
-            ],
-            "whereJsonTree": {
-              "children1": [
-                {
-                  "id": "89aaa9ba-89ab-4cde-b012-319a9609260e",
-                  "properties": {
-                    "field": "device",
-                    "fieldSrc": "field",
-                    "operator": "equal",
-                    "value": [
-                      "pi14"
-                    ],
-                    "valueError": [
-                      null
-                    ],
-                    "valueSrc": [
-                      "value"
-                    ],
-                    "valueType": [
-                      "text"
-                    ]
-                  },
-                  "type": "rule"
-                }
-              ],
-              "id": "ba888998-0123-4456-b89a-b19a9608c992",
-              "type": "group"
-            },
-            "whereString": "device = 'pi14'"
+            ]
           },
           "table": "metrics"
         }
@@ -658,7 +518,7 @@
           "dataset": "iox",
           "editorMode": "builder",
           "format": "table",
-          "rawSql": "SELECT \"ram_used_mb\" FROM \"metrics\" WHERE \"time\" >= $__timeFrom AND \"time\" <= $__timeTo AND \"device\" = 'pi14' ",
+          "rawSql": "SELECT \"ram_used_mb\" FROM \"metrics\" WHERE \"time\" >= $__timeFrom AND \"time\" <= $__timeTo ",
           "refId": "A",
           "sql": {
             "columns": [
@@ -679,35 +539,7 @@
                 },
                 "type": "groupBy"
               }
-            ],
-            "whereJsonTree": {
-              "children1": [
-                {
-                  "id": "b899aaa8-cdef-4012-b456-719a960a0e42",
-                  "properties": {
-                    "field": "device",
-                    "fieldSrc": "field",
-                    "operator": "equal",
-                    "value": [
-                      "pi14"
-                    ],
-                    "valueError": [
-                      null
-                    ],
-                    "valueSrc": [
-                      "value"
-                    ],
-                    "valueType": [
-                      "text"
-                    ]
-                  },
-                  "type": "rule"
-                }
-              ],
-              "id": "ba888998-0123-4456-b89a-b19a9608c992",
-              "type": "group"
-            },
-            "whereString": "device = 'pi14'"
+            ]
           },
           "table": "metrics"
         }
@@ -2544,8 +2376,8 @@
     "list": []
   },
   "time": {
-    "from": "now-30m",
-    "to": "now"
+    "from": "2025-11-13T13:38:19.808Z",
+    "to": "2025-11-13T16:41:22.549Z"
   },
   "timepicker": {
     "refresh_intervals": [
@@ -2554,6 +2386,6 @@
   },
   "timezone": "browser",
   "title": "Pi 14 Metrics",
-  "uid": "adbddqs",
-  "version": 7
+  "uid": "adbddql",
+  "version": 42
 }
